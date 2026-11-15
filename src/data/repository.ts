@@ -4,10 +4,40 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 import { categories, demoBookings } from './mock';
 import { supabase } from '../lib/supabase';
-import type { AppUser, Booking, BookingDraft, BookingStatus, SessionMode } from '../types';
+import type { AppUser, Booking, BookingDraft, BookingStatus, ServiceCategory, SessionMode } from '../types';
 
 const DEMO_BOOKINGS_KEY = 'gharkaam.demo.bookings.v1';
+const DEMO_ADMIN_KEY = 'gharkaam.demo.admin.v1';
 const createId = () => `GK-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+
+export interface DemoAdminOverrides {
+  providerStatuses: Record<string, 'pending' | 'approved' | 'suspended'>;
+  serviceCategoryActive: Record<string, boolean>;
+  promotionActive: Record<string, boolean>;
+}
+
+const emptyDemoAdminOverrides = (): DemoAdminOverrides => ({ providerStatuses: {}, serviceCategoryActive: {}, promotionActive: {} });
+
+export async function loadDemoAdminOverrides(): Promise<DemoAdminOverrides> {
+  const stored = await AsyncStorage.getItem(DEMO_ADMIN_KEY);
+  if (!stored) return emptyDemoAdminOverrides();
+  try {
+    const parsed = JSON.parse(stored);
+    return {
+      providerStatuses: parsed?.providerStatuses && typeof parsed.providerStatuses === 'object' ? parsed.providerStatuses : {},
+      serviceCategoryActive: parsed?.serviceCategoryActive && typeof parsed.serviceCategoryActive === 'object' ? parsed.serviceCategoryActive : {},
+      promotionActive: parsed?.promotionActive && typeof parsed.promotionActive === 'object' ? parsed.promotionActive : {},
+    };
+  } catch {
+    return emptyDemoAdminOverrides();
+  }
+}
+
+async function saveDemoAdminOverride<K extends keyof DemoAdminOverrides>(key: K, id: string, value: DemoAdminOverrides[K][string]) {
+  const current = await loadDemoAdminOverrides();
+  const next = { ...current, [key]: { ...current[key], [id]: value } };
+  await AsyncStorage.setItem(DEMO_ADMIN_KEY, JSON.stringify(next));
+}
 
 async function readDemoBookings(): Promise<Booking[]> {
   const stored = await AsyncStorage.getItem(DEMO_BOOKINGS_KEY);
@@ -105,9 +135,11 @@ export async function createBooking(draft: BookingDraft, user: AppUser | null, m
 
 export async function listBookings(user: AppUser | null, mode: SessionMode): Promise<Booking[]> {
   if (mode === 'authenticated' && user && supabase) {
-    const { data, error } = await supabase.from('bookings').select('*').order('created_at', { ascending: false }).limit(100);
+    const { data, error } = await supabase.from('bookings').select('*').order('created_at', { ascending: false }).limit(user.role === 'admin' ? 1000 : 100);
     if (error) throw error;
-    const { data: ratings, error: ratingsError } = await supabase.from('reviews').select('booking_id, rating').eq('customer_id', user.id).limit(100);
+    const { data: ratings, error: ratingsError } = user.role === 'customer'
+      ? await supabase.from('reviews').select('booking_id, rating').eq('customer_id', user.id).limit(100)
+      : { data: [], error: null };
     if (ratingsError) throw ratingsError;
     return (data ?? []).map((row) => ({ ...mapDbBooking(row), rating: ratings?.find((review) => review.booking_id === row.id)?.rating }));
   }
@@ -177,21 +209,127 @@ export async function setProviderApproval(providerId: string, status: 'approved'
   if (mode === 'authenticated' && supabase) {
     const { error } = await supabase.rpc('admin_set_provider_status', { p_provider_id: providerId, p_status: status });
     if (error) throw error;
-  }
+  } else if (mode === 'demo') await saveDemoAdminOverride('providerStatuses', providerId, status);
 }
 
 export async function setCategoryActive(categoryId: string, active: boolean, mode: SessionMode) {
   if (mode === 'authenticated' && supabase) {
     const { error } = await supabase.rpc('admin_set_category_active', { p_category_id: categoryId, p_is_active: active });
     if (error) throw error;
-  }
+  } else if (mode === 'demo') await saveDemoAdminOverride('serviceCategoryActive', categoryId, active);
 }
 
 export async function setPromoActive(code: string, active: boolean, mode: SessionMode) {
   if (mode === 'authenticated' && supabase) {
     const { error } = await supabase.rpc('admin_set_promo_active', { p_code: code, p_active: active });
     if (error) throw error;
-  }
+  } else if (mode === 'demo') await saveDemoAdminOverride('promotionActive', code, active);
+}
+
+export interface AdminProviderRecord {
+  id: string;
+  name: string;
+  phone: string;
+  serviceArea: string;
+  categoryIds: string[];
+  yearsExperience: number;
+  status: 'pending' | 'approved' | 'suspended';
+  rating: number;
+  reviews: number;
+  completedJobs: number;
+  createdAt: string;
+}
+
+export interface AdminPromotion {
+  code: string;
+  titleEn: string;
+  titleUr: string;
+  discountPercent: number;
+  active: boolean;
+  expiresAt: string | null;
+  usageLimit: number | null;
+}
+
+export interface AdminSnapshot {
+  customers: number;
+  totalProviders: number;
+  pendingProviders: number;
+  approvedProviders: number;
+  suspendedProviders: number;
+  totalBookings: number;
+  activeBookings: number;
+  providers: AdminProviderRecord[];
+  serviceCategories: ServiceCategory[];
+  promotions: AdminPromotion[];
+}
+
+export async function loadAdminSnapshot(): Promise<AdminSnapshot> {
+  if (!supabase) throw new Error('Supabase is unavailable.');
+  const [customersResult, providerCountResult, pendingCountResult, approvedCountResult, suspendedCountResult, bookingCountResult, activeBookingCountResult, providersResult, categoryResult, subtypeResult, promoResult] = await Promise.all([
+    supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'customer'),
+    supabase.from('providers').select('id', { count: 'exact', head: true }),
+    supabase.from('providers').select('id', { count: 'exact', head: true }).eq('verification_status', 'pending'),
+    supabase.from('providers').select('id', { count: 'exact', head: true }).eq('verification_status', 'approved'),
+    supabase.from('providers').select('id', { count: 'exact', head: true }).eq('verification_status', 'suspended'),
+    supabase.from('bookings').select('id', { count: 'exact', head: true }),
+    supabase.from('bookings').select('id', { count: 'exact', head: true }).in('status', ['pending', 'accepted', 'on_the_way', 'in_progress']),
+    supabase.from('providers').select('id, full_name, phone, service_area, service_category_ids, years_experience, verification_status, rating, review_count, completed_jobs, created_at').order('created_at', { ascending: false }).limit(1000),
+    supabase.from('service_categories').select('id, name_en, name_ur, icon, is_active, sort_order').order('sort_order').limit(100),
+    supabase.from('service_subtypes').select('id, category_id, name_en, name_ur, starting_price_pkr, is_active, sort_order').order('sort_order').limit(1000),
+    supabase.from('promo_codes').select('code, title_en, title_ur, discount_percent, active, expires_at, usage_limit').order('created_at', { ascending: false }).limit(100),
+  ]);
+  const errors = [customersResult.error, providerCountResult.error, pendingCountResult.error, approvedCountResult.error, suspendedCountResult.error, bookingCountResult.error, activeBookingCountResult.error, providersResult.error, categoryResult.error, subtypeResult.error, promoResult.error];
+  const firstError = errors.find(Boolean);
+  if (firstError) throw firstError;
+  const serviceCategories: ServiceCategory[] = (categoryResult.data ?? []).map((row) => {
+    const fallback = categories.find((item) => item.id === row.id);
+    return {
+      id: row.id,
+      titleEn: row.name_en,
+      titleUr: row.name_ur,
+      icon: row.icon,
+      color: fallback?.color ?? '#E5F0E9',
+      available: row.is_active,
+      subtypes: (subtypeResult.data ?? []).filter((subtype) => subtype.category_id === row.id).map((subtype) => ({
+        id: subtype.id,
+        titleEn: subtype.name_en,
+        titleUr: subtype.name_ur,
+        startingPrice: subtype.starting_price_pkr,
+      })),
+    };
+  });
+  return {
+    customers: customersResult.count ?? 0,
+    totalProviders: providerCountResult.count ?? 0,
+    pendingProviders: pendingCountResult.count ?? 0,
+    approvedProviders: approvedCountResult.count ?? 0,
+    suspendedProviders: suspendedCountResult.count ?? 0,
+    totalBookings: bookingCountResult.count ?? 0,
+    activeBookings: activeBookingCountResult.count ?? 0,
+    providers: (providersResult.data ?? []).map((row) => ({
+      id: row.id,
+      name: row.full_name,
+      phone: row.phone ?? '',
+      serviceArea: row.service_area,
+      categoryIds: row.service_category_ids ?? [],
+      yearsExperience: row.years_experience,
+      status: row.verification_status,
+      rating: Number(row.rating ?? 0),
+      reviews: row.review_count ?? 0,
+      completedJobs: row.completed_jobs ?? 0,
+      createdAt: row.created_at,
+    })),
+    serviceCategories,
+    promotions: (promoResult.data ?? []).map((row) => ({
+      code: row.code,
+      titleEn: row.title_en,
+      titleUr: row.title_ur,
+      discountPercent: row.discount_percent,
+      active: row.active,
+      expiresAt: row.expires_at,
+      usageLimit: row.usage_limit,
+    })),
+  };
 }
 
 export async function loadMarketplaceSettings() {
