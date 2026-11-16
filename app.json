@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "GharKaam",
+    "icon": "./assets/icon.png",
     "slug": "gharkaam",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -23,7 +24,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      ["expo-image-picker", { "photosPermission": "GharKaam uses your photos to help explain a home repair." }],
+      ["expo-image-picker", { "photosPermission": "GharKaam uses your photos to help explain a home repair.", "microphonePermission": false }],
       "expo-font"
     ]
   }
