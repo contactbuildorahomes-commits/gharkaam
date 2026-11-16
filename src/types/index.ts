@@ -13,6 +13,7 @@ export interface ServiceCategory {
   color: string;
   subtypes: ServiceSubtype[];
   available: boolean;
+  sortOrder?: number;
 }
 
 export interface ServiceSubtype {
@@ -20,6 +21,8 @@ export interface ServiceSubtype {
   titleUr: string;
   titleEn: string;
   startingPrice: number;
+  available?: boolean;
+  sortOrder?: number;
 }
 
 export interface Provider {

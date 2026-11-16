@@ -1,59 +1,57 @@
-# GharKaam
+# GharKaam V1
 
-An Urdu-first home-services marketplace foundation built with Expo, React Native, TypeScript, and Supabase. The first release focuses on electrician and plumbing bookings, with separate customer, provider, and admin journeys.
+An Urdu-first, Lahore-focused home-services marketplace built with Expo, React Native, TypeScript, and Supabase. Customer, provider, and admin journeys stay separate; Urdu is the default with an English switch and RTL layout.
 
 ## Run locally
 
 ```bash
 npm install
+cp .env.example .env.local
+# Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY in .env.local
 npx expo start
 ```
 
-Copy `.env.example` to `.env.local` and set `EXPO_PUBLIC_SUPABASE_URL` plus `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` before starting Expo. The local environment file is ignored by Git. Never put a Supabase service-role key in this app or repository.
+The local environment file is ignored by Git. The mobile app uses only the client-safe Supabase publishable key. Never put a service-role key in the app or repository.
 
-## Demo journeys
+## V1 workflows
 
-- Customer: explore services, describe a repair, optionally attach a photo, choose a Lahore address and time, compare sample professionals, select a demo payment method, apply `PEHLI15`, confirm, track, and rate.
-- Provider: preview jobs and status changes; real accounts can submit an application for admin review.
-- Admin: review provider applications and manage marketplace settings. There is no admin self-registration; a real admin must already exist in the protected `profiles` table.
+- **Customer:** browse live service categories and subtypes, describe a job, optionally attach a photo, choose an address/time, request a booking, track status, and rate completed work.
+- **Provider:** apply for approval, view eligible open requests, accept work, and progress assigned jobs through guarded statuses.
+- **Admin:** search and page through the complete provider lifecycle directory (review applications and suspend/reactivate providers); search and page through a minimal customer directory; search booking queues, make guarded status changes, and assign pending bookings to approved, service-eligible providers; create/edit bilingual service categories, subtypes, and offers; and pause/reactivate catalog items or offers.
 
-Demo payment choices are labels only—no payment processing is implemented. Provider locations are illustrative estimates—no GPS tracking is implemented.
+Catalog and offer records are deactivated rather than deleted, preserving booking history and foreign-key references. Promotion expiry and optional global usage caps are checked by the server; a use is consumed when a booking is created, including if it is later cancelled, and caps are serialized with a promo-row lock. A cap cannot be reduced below the number of bookings already created with that offer. Provider assignment validates approval and service-category eligibility on the server, then marks the booking accepted; service-area fit remains an admin judgment, not an automated location guarantee.
 
-## Supabase
+Demo changes are stored locally on the device and do not write to Supabase. Demo customers, providers, bookings, payment methods, and provider locations are illustrative. Real payment processing and live provider GPS are not implemented.
 
-The SQL migration in `database/migrations/` defines the initial schema and row-level security. The app uses only the client-safe publishable key. Admin role assignment is deliberately excluded from public signup and must be granted through a trusted administrative channel. Apply the migration before using authenticated data flows.
+## Admin security and account setup
+
+There is no public admin self-signup and no client-side role promotion. Create the owner account using the normal customer signup path and the owner's own email, complete email confirmation if enabled, then grant the `admin` role through a trusted Supabase database administrator/operator channel. Never expose a service-role credential to the app. The first admin should be provisioned only after the account exists; all admin reads and mutations still enforce the profile role server-side.
+
+The `database/migrations/` SQL files are versioned, additive migrations. Apply them in order to a fresh project through a trusted Supabase migration channel; do not replay them against an already-migrated project. The approved project is `gharkaam` (`xbolobjxptfnbjicfvao`), region `ap-south-1`; foundation, RPC permission hardening, admin V1 controls, full provider paging, and legacy SECURITY DEFINER path hardening are applied there. The first owner role is assigned only after the submitted signup email is verified.
 
 ## Project structure
 
-- `src/screens/` — customer, provider, admin, role selection, and authentication journeys
-- `src/components/` — shared UI, shell, and navigation
-- `src/data/` — local demo fixtures and repository boundary
-- `src/lib/` — Supabase client and authentication helpers
+- `src/screens/` — customer, provider, admin, role selection, and authentication screens
+- `src/screens/AdminManagementModals.tsx` — bilingual admin category, subtype, offer, and provider-assignment forms
+- `src/data/` — local demo fixtures and Supabase repository boundary
+- `src/lib/` — Supabase client, auth, and admin form validation
 - `src/i18n/` — Urdu and English copy
-- `database/migrations/` — versioned PostgreSQL schema and policies
+- `database/migrations/` — versioned PostgreSQL schema, RLS, and server-guarded RPCs
+- `tests/` — admin form validation and migration guard regression tests
 
-## Current delivery status
+## Validation
 
-The Expo application is connected to the approved Supabase project `gharkaam` (`xbolobjxptfnbjicfvao`) in `App org`, region `ap-south-1`. **Both foundation and RPC-permission migrations were applied successfully.** Eight application tables have RLS enabled, four categories/eight subtypes/one promo are seeded, and the private photo bucket is configured. No unrelated objects or user data were changed. Client-safe connection settings exist only in the ignored local environment file.
+```bash
+npm test
+npx tsc --noEmit
+npx expo install --check
+npx expo export --platform web
+npx expo export --platform ios
+npx expo export --platform android
+```
 
-The source is in the private GitHub repository [`contactbuildorahomes-commits/gharkaam`](https://github.com/contactbuildorahomes-commits/gharkaam). No public application deployment was created.
+These exports verify platform bundles, not physical-device execution or a public deployment. Authenticated multi-account flows, native photo picking/upload, app-store signing, production monitoring, and a full privacy/security review still need release testing.
 
-Before real-user testing:
+## Known limits
 
-1. For a fresh project only, apply both SQL files in `database/migrations/` in order through a trusted Supabase migration channel. They are versioned one-time migrations, not scripts to rerun against an existing installation. The approved project above is already migrated.
-2. Confirm email/password Auth settings and allowed verification redirect URLs.
-3. Register the intended admin as a normal customer, then grant `profiles.role = 'admin'` through a trusted database administrator. There is no public admin signup or client-side role promotion.
-4. Test separate buyer/provider signups, approve the provider from the real admin account, and test booking creation, optional photo upload, acceptance, status progression, and review insertion with separate accounts.
-
-## Validation and limitations
-
-Run `npx tsc --noEmit`, `npx expo install --check`, and `npx expo export --platform web`. A local web preview can be served from `dist/`; this is not a production deployment.
-
-- TypeScript, dependency compatibility, web export, and iOS/Android JavaScript/Hermes bundle exports have passed. Native device execution, native photo picker/upload, authenticated multi-account workflows, and email confirmation still require integration testing.
-- Browser smoke tests covered Urdu RTL rendering, the English switch, service/subtype/problem entry, appointment selection, sample professionals, the `PEHLI15` discount (Rs 700 to Rs 595), local confirmation/tracking, and initial provider status transitions. Database checks verified table RLS, seeds, private bucket limits, anonymous catalog access, role guards, and RPC ACLs. Anonymous execution of protected RPCs and all client execution of trigger-only functions are revoked.
-- Customer/provider/admin demo journeys use local fixtures. Professionals shown during selection are samples; an authenticated booking records a preferred display name, not a real provider assignment. Approved eligible providers claim open requests.
-- The admin operations console provides live marketplace counts, provider application review and lifecycle controls, searchable booking queues with guarded status transitions, and Supabase-backed service/promotion toggles. Provider and booking lists are capped to the latest 1,000 records; there is no customer directory, provider assignment tool, payment processing, or live GPS tracking. Admin role provisioning remains a trusted database operation; public admin self-registration and client-side role promotion are disabled. Authenticated customer catalogs are loaded from Supabase, and invalid/paused services and offers are rejected by the booking RPC.
-- Status refresh is periodic (15 seconds), not GPS tracking. Payment methods are demo labels and no money is charged.
-- Launch city is Lahore; appointment selection currently uses the device's local timezone. Explicit cross-timezone scheduling, multi-city routing, provider capacity, customer address management, first-use/global promo redemption enforcement, anti-abuse controls, production monitoring, and full privacy/security review are future work.
-- Review records persist; aggregate provider ratings/job counts are not yet automatically recalculated. Photos use a private, size/MIME-limited bucket; retention/cleanup needs a production policy.
-- `npm audit --omit=dev` currently reports three moderate findings in the Expo fingerprint/minimatch chain, with no high or critical finding. The suggested automatic fix changes the Expo major version, so it was not applied blindly.
+The launch city is Lahore. Appointment times currently use the device's local timezone. Provider and booking operational lists load up to the latest 1,000 rows; the customer directory uses server-side search with 100-row pages. Customer address management, provider capacity planning, multi-city routing, per-customer or first-use promo restrictions, aggregate rating recalculation, review moderation, photo-retention automation, and anti-abuse controls are not part of this V1. Demo payment choices are labels only; no money is charged.

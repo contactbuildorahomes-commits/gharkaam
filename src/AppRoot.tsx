@@ -7,7 +7,7 @@ import { NotoNastaliqUrdu_400Regular } from '@expo-google-fonts/noto-nastaliq-ur
 import type { AppRoute, AppUser, Booking, BookingDraft, BookingStatus, Language, ServiceCategory, SessionMode, UserRole } from './types';
 import { colors } from './theme/tokens';
 import { restoreSignedInUser, signOut } from './lib/auth';
-import { createBooking, listBookings, loadMarketplaceSettings, saveRating, setBookingStatus } from './data/repository';
+import { assignBookingProvider, createBooking, listBookings, loadMarketplaceSettings, saveRating, setBookingStatus, type AdminProviderRecord } from './data/repository';
 import { categories } from './data/mock';
 import { text } from './i18n/translations';
 import { AppFrame } from './components/AppFrame';
@@ -101,6 +101,11 @@ export default function AppRoot() {
     setBookings((rows) => rows.some((row) => row.id === updated.id) ? rows.map((row) => row.id === updated.id ? updated : row) : [updated, ...rows]);
     if (selectedBooking?.id === updated.id) setSelectedBooking(updated);
   };
+  const updateAssignment = async (booking: Booking, provider: AdminProviderRecord) => {
+    const updated = await assignBookingProvider(booking, provider, mode);
+    setBookings((rows) => rows.map((row) => row.id === updated.id ? updated : row));
+    if (selectedBooking?.id === updated.id) setSelectedBooking(updated);
+  };
   const rateBooking = async (booking: Booking, rating: number) => {
     try {
       await saveRating(booking, rating, user, mode);
@@ -124,7 +129,7 @@ export default function AppRoot() {
   else if (activeRoute === 'bookings' && role === 'customer') content = <BookingsScreen language={language} bookings={bookings} onTrack={(booking) => { setSelectedBooking(booking); setScreen('tracking'); }} onRate={rateBooking} />;
   else if (activeRoute === 'tracking' && role === 'customer') content = selectedBooking ? <TrackingScreen language={language} booking={selectedBooking} onBack={() => setScreen('bookings')} /> : <AppText language={language}>{text(language, 'noBookings')}</AppText>;
   else if (activeRoute === 'provider' && role === 'provider') content = <ProviderScreen language={language} user={user} mode={mode} bookings={bookings} onStatusChange={updateStatus} />;
-  else if (activeRoute === 'admin' && role === 'admin') content = <AdminScreen language={language} user={user} mode={mode} bookings={bookings} onBookingStatus={updateStatus} />;
+  else if (activeRoute === 'admin' && role === 'admin') content = <AdminScreen language={language} user={user} mode={mode} bookings={bookings} onBookingStatus={updateStatus} onBookingAssignment={updateAssignment} />;
   else if (activeRoute === 'profile') content = <ProfileScreen language={language} user={user} role={role} isDemo={mode === 'demo'} onLeave={leaveSession} onChangeRole={() => setScreen('entry')} />;
   else content = <CustomerHomeScreen language={language} name={user?.displayName ?? ''} bookings={bookings} onBook={startBooking} onTrack={(booking) => { setSelectedBooking(booking); setScreen('tracking'); }} onBookings={() => setScreen('bookings')} />;
 
