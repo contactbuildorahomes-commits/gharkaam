@@ -4,7 +4,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
 import { categories, demoBookings } from './mock';
 import { supabase } from '../lib/supabase';
-import type { AppUser, Booking, BookingDraft, BookingStatus, ServiceCategory, ServiceSubtype, SessionMode } from '../types';
+import type { AppUser, Booking, BookingDraft, BookingStatus, Language, Provider, ServiceCategory, ServiceSubtype, SessionMode } from '../types';
+import { applyDemoCategoryOverrides, applyDemoProviderStatus, normalizeLegacyDemoBookings } from '../lib/demoState';
 
 const DEMO_BOOKINGS_KEY = 'gharkaam.demo.bookings.v1';
 const DEMO_ADMIN_KEY = 'gharkaam.demo.admin.v1';
@@ -59,7 +60,14 @@ async function readDemoBookings(): Promise<Booking[]> {
     await AsyncStorage.setItem(DEMO_BOOKINGS_KEY, JSON.stringify(demoBookings));
     return demoBookings;
   }
-  try { return JSON.parse(stored) as Booking[]; } catch { return demoBookings; }
+  try {
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return demoBookings;
+    const rows = parsed.filter((row) => row && typeof row === 'object' && typeof row.id === 'string') as Booking[];
+    const normalized = normalizeLegacyDemoBookings(rows);
+    if (JSON.stringify(normalized) !== JSON.stringify(rows)) await AsyncStorage.setItem(DEMO_BOOKINGS_KEY, JSON.stringify(normalized));
+    return normalized;
+  } catch { return demoBookings; }
 }
 async function saveDemoBookings(bookings: Booking[]) { await AsyncStorage.setItem(DEMO_BOOKINGS_KEY, JSON.stringify(bookings)); }
 
@@ -130,9 +138,12 @@ async function uploadPhoto(uri: string, userId: string, bookingId: string): Prom
 }
 
 export async function createBooking(draft: BookingDraft, user: AppUser | null, mode: SessionMode): Promise<Booking> {
-  const category = categories.find((item) => item.id === draft.serviceId);
+  const demoCatalog = mode === 'demo' ? applyDemoCategoryOverrides(categories, await loadDemoAdminOverrides()) : categories;
+  const category = demoCatalog.find((item) => item.id === draft.serviceId);
   const subtype = category?.subtypes.find((item) => item.id === draft.subtypeId);
-  if (mode === 'authenticated' && user && supabase) {
+  if (mode === 'demo' && (!category?.available || !subtype || subtype.available === false)) throw new Error('This demo service is currently unavailable.');
+  if (mode === 'authenticated') {
+    if (!user || !supabase) throw new Error('An authenticated Supabase session is required to create a booking.');
     const { data, error } = await supabase.rpc('customer_create_booking', {
       p_service_category_id: draft.serviceId,
       p_subtype_id: draft.subtypeId,
@@ -141,7 +152,7 @@ export async function createBooking(draft: BookingDraft, user: AppUser | null, m
       p_scheduled_at: draft.scheduledAt,
       p_payment_method: draft.paymentMethod,
       p_promo_code: draft.promoCode ?? null,
-      p_preferred_provider_name: draft.provider.nameEn,
+      p_preferred_provider_name: draft.provider?.nameEn ?? null,
     });
     if (error) throw error;
     let row = data;
@@ -158,11 +169,12 @@ export async function createBooking(draft: BookingDraft, user: AppUser | null, m
     }
     return mapDbBooking(row, lookups);
   }
+  if (mode !== 'demo') throw new Error('Unsupported booking session mode.');
   const booking: Booking = {
     id: createId(), serviceId: draft.serviceId, serviceNameUr: category?.titleUr ?? '', serviceNameEn: category?.titleEn ?? '',
-    subtypeUr: subtype?.titleUr ?? '', subtypeEn: subtype?.titleEn ?? '', providerId: draft.provider.id, providerName: draft.provider.nameUr, preferredProviderName: draft.provider.nameUr,
+    subtypeUr: subtype?.titleUr ?? '', subtypeEn: subtype?.titleEn ?? '', providerId: null, providerName: '', preferredProviderName: draft.preferredProviderName ?? '',
     customerName: user?.displayName ?? 'احمد خان', description: draft.description, address: draft.address, scheduledAt: draft.scheduledAt,
-    status: 'accepted', paymentMethod: draft.paymentMethod, promoCode: draft.promoCode, price: draft.price, photoUri: draft.photoUri, createdAt: new Date().toISOString(),
+    status: 'pending', paymentMethod: 'cash', promoCode: draft.promoCode, price: draft.price, photoUri: draft.photoUri, createdAt: new Date().toISOString(),
   };
   const existing = await readDemoBookings();
   await saveDemoBookings([booking, ...existing]);
@@ -170,7 +182,8 @@ export async function createBooking(draft: BookingDraft, user: AppUser | null, m
 }
 
 export async function listBookings(user: AppUser | null, mode: SessionMode): Promise<Booking[]> {
-  if (mode === 'authenticated' && user && supabase) {
+  if (mode === 'authenticated') {
+    if (!user || !supabase) throw new Error('An authenticated Supabase session is required to load bookings.');
     const [bookingsResult, lookups] = await Promise.all([
       supabase.from('bookings').select('*').order('created_at', { ascending: false }).limit(user.role === 'admin' ? 1000 : 100),
       loadCatalogLookups(),
@@ -216,8 +229,9 @@ export async function listProviderOpenJobs(user: AppUser | null, mode: SessionMo
   });
 }
 
-export async function setBookingStatus(booking: Booking, next: BookingStatus, user: AppUser | null, mode: SessionMode): Promise<Booking> {
-  if (mode === 'authenticated' && user && supabase) {
+export async function setBookingStatus(booking: Booking, next: BookingStatus, user: AppUser | null, mode: SessionMode, demoProvider?: Pick<Provider, 'id' | 'nameEn' | 'nameUr'>, language: Language = 'ur'): Promise<Booking> {
+  if (mode === 'authenticated') {
+    if (!user || !supabase) throw new Error('An authenticated Supabase session is required to update a booking.');
     const rpc = user.role === 'provider' ? 'provider_set_booking_status' : user.role === 'admin' ? 'admin_set_booking_status' : null;
     if (rpc) {
       const { data, error } = await supabase.rpc(rpc, { p_booking_id: booking.id, p_next_status: next });
@@ -231,8 +245,9 @@ export async function setBookingStatus(booking: Booking, next: BookingStatus, us
     }
     throw new Error('This role cannot change the booking status.');
   }
+  if (mode !== 'demo') throw new Error('Unsupported booking session mode.');
   const rows = await readDemoBookings();
-  const updated = rows.map((item) => item.id === booking.id ? { ...item, status: next } : item);
+  const updated = rows.map((item) => item.id === booking.id ? applyDemoProviderStatus(item, next, demoProvider, language) : item);
   await saveDemoBookings(updated);
   return updated.find((item) => item.id === booking.id) ?? booking;
 }
@@ -244,7 +259,7 @@ export async function assignBookingProvider(booking: Booking, provider: AdminPro
     return mapDbBooking(data, await loadCatalogLookups());
   }
   if (mode !== 'demo') throw new Error('A protected admin session is required.');
-  const updated = { ...booking, providerId: provider.id, providerName: provider.name, status: 'accepted' as const };
+  const updated = { ...booking, providerId: provider.id, providerName: provider.name, status: 'accepted' as const, demoAssignmentConfirmed: true };
   const rows = await readDemoBookings();
   await saveDemoBookings(rows.map((item) => item.id === booking.id ? updated : item));
   return updated;
@@ -280,7 +295,8 @@ export async function loadAdminCustomers(search: string, offset = 0, limit = 100
 }
 
 export async function saveRating(booking: Booking, rating: number, user: AppUser | null, mode: SessionMode): Promise<void> {
-  if (mode === 'authenticated' && user && supabase) {
+  if (mode === 'authenticated') {
+    if (!user || !supabase) throw new Error('An authenticated Supabase session is required to save a rating.');
     const { error } = await supabase.from('reviews').insert({ booking_id: booking.id, customer_id: user.id, provider_id: booking.providerId ?? null, rating });
     if (error) throw error;
     return;
@@ -290,24 +306,30 @@ export async function saveRating(booking: Booking, rating: number, user: AppUser
 }
 
 export async function setProviderApproval(providerId: string, status: 'approved' | 'suspended', mode: SessionMode) {
-  if (mode === 'authenticated' && supabase) {
+  if (mode === 'authenticated') {
+    if (!supabase) throw new Error('Supabase is unavailable.');
     const { error } = await supabase.rpc('admin_set_provider_status', { p_provider_id: providerId, p_status: status });
     if (error) throw error;
   } else if (mode === 'demo') await saveDemoAdminOverride('providerStatuses', providerId, status);
+  else throw new Error('Unsupported admin session mode.');
 }
 
 export async function setCategoryActive(categoryId: string, active: boolean, mode: SessionMode) {
-  if (mode === 'authenticated' && supabase) {
+  if (mode === 'authenticated') {
+    if (!supabase) throw new Error('Supabase is unavailable.');
     const { error } = await supabase.rpc('admin_set_category_active', { p_category_id: categoryId, p_is_active: active });
     if (error) throw error;
   } else if (mode === 'demo') await saveDemoAdminOverride('serviceCategoryActive', categoryId, active);
+  else throw new Error('Unsupported admin session mode.');
 }
 
 export async function setPromoActive(code: string, active: boolean, mode: SessionMode) {
-  if (mode === 'authenticated' && supabase) {
+  if (mode === 'authenticated') {
+    if (!supabase) throw new Error('Supabase is unavailable.');
     const { error } = await supabase.rpc('admin_set_promo_active', { p_code: code, p_active: active });
     if (error) throw error;
   } else if (mode === 'demo') await saveDemoAdminOverride('promotionActive', code, active);
+  else throw new Error('Unsupported admin session mode.');
 }
 
 export async function saveServiceCategory(category: ServiceCategory, isUpdate: boolean, mode: SessionMode): Promise<ServiceCategory> {

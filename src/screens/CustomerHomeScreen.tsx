@@ -14,7 +14,7 @@ export function CustomerHomeScreen({ language, name, bookings, onBook, onTrack, 
   return <View style={{ gap: spacing.xl }}>
     <View style={[styles.greeting, ur && styles.rtlRow]}><View style={{ flex: 1 }}><AppText language={language} size={12} color={colors.muted}>{text(language, 'hello')},</AppText><AppText language={language} size={21} weight="bold">{name || (ur ? 'احمد خان' : 'Ahmad Khan')}</AppText><View style={[styles.location, ur && styles.rtlRow]}><Ionicons name="location" size={13} color={colors.jade} /><AppText language={language} size={11} color={colors.inkSoft}>{text(language, 'location')}</AppText></View></View><IconCircle name="notifications-outline" background={colors.white} size={42} color={colors.forest} /></View>
     <LinearGradient colors={[colors.forest, colors.forestDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
-      <View style={styles.orb} /><View style={[styles.heroTag, ur && styles.rtlRow]}><Ionicons name="sparkles" size={14} color={colors.lime} /><AppText language={language} size={10} color={colors.lime} weight="bold">{language === 'ur' ? 'قابلِ اعتماد، آپ کے قریب' : 'TRUSTED HELP, CLOSE BY'}</AppText></View>
+      <View style={styles.orb} /><View style={[styles.heroTag, ur && styles.rtlRow]}><Ionicons name="sparkles" size={14} color={colors.lime} /><AppText language={language} size={10} color={colors.lime} weight="bold">{language === 'ur' ? 'گھر کی سروس، آسان طریقے سے' : 'LOCAL HOME-SERVICE REQUESTS'}</AppText></View>
       <AppText language={language} size={24} weight="bold" color={colors.white} style={{ maxWidth: 260, marginTop: 9 }}>{text(language, 'howHelp')}</AppText>
       <AppText language={language} size={12} color="#D6E6DF" style={{ marginTop: 4 }}>{text(language, 'trusted')}</AppText>
       <Button language={language} title={text(language, 'bookNow')} icon="arrow-forward" variant="secondary" onPress={() => onBook()} style={styles.heroButton} />
@@ -34,10 +34,10 @@ export function CustomerHomeScreen({ language, name, bookings, onBook, onTrack, 
 
 function ServiceTile({ category, language, onPress }: { category: ServiceCategory; language: Language; onPress: () => void }) {
   const name = language === 'ur' ? category.titleUr : category.titleEn;
-  return <Pressable onPress={onPress} style={({ pressed }) => [styles.serviceTile, { backgroundColor: colors.white, opacity: pressed ? 0.75 : 1 }]}>
+  return <Pressable disabled={!category.available} accessibilityState={{ disabled: !category.available }} onPress={onPress} style={({ pressed }) => [styles.serviceTile, { backgroundColor: colors.white, opacity: category.available ? (pressed ? 0.75 : 1) : 0.55 }]}>
     <View style={[styles.tileIcon, { backgroundColor: category.color }]}><Ionicons name={category.icon as keyof typeof Ionicons.glyphMap} size={22} color={category.id === 'plumber' ? colors.blue : category.id === 'electrician' ? '#B66B2D' : colors.jade} /></View>
     <AppText language={language} size={12} weight="bold" style={{ textAlign: 'center' }}>{name}</AppText>
-    {!category.available ? <View style={styles.coming}><AppText language={language} size={8} color={colors.muted}>SOON</AppText></View> : null}
+    {!category.available ? <View style={[styles.coming, language === 'ur' ? styles.comingLeft : styles.comingRight]}><AppText language={language} size={8} color={colors.muted}>{text(language, 'servicePaused')}</AppText></View> : null}
   </Pressable>;
 }
 
@@ -47,7 +47,7 @@ const styles = StyleSheet.create({
   heroTag: { flexDirection: 'row', gap: 6, alignItems: 'center' }, heroButton: { alignSelf: 'flex-start', marginTop: 16, minHeight: 42 }, heroIcon: { position: 'absolute', right: 26, bottom: 30, width: 56, height: 56, borderRadius: 20, backgroundColor: 'rgba(214,240,122,0.12)', alignItems: 'center', justifyContent: 'center' },
   promoCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: radius.md, borderWidth: 1, borderColor: '#F1DEC7', backgroundColor: '#FFF9F1', padding: 14 }, promoIcon: { height: 38, width: 38, borderRadius: 13, backgroundColor: colors.orangeSoft, alignItems: 'center', justifyContent: 'center' },
   categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, serviceTile: { width: '48%', flexGrow: 1, minHeight: 120, borderRadius: radius.md, borderWidth: 1, borderColor: colors.line, alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, position: 'relative' },
-  tileIcon: { width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }, coming: { position: 'absolute', top: 8, right: 8, paddingHorizontal: 6, paddingVertical: 2, backgroundColor: '#F1F3F0', borderRadius: 99 },
+  tileIcon: { width: 44, height: 44, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }, coming: { position: 'absolute', top: 8, paddingHorizontal: 6, paddingVertical: 3, backgroundColor: '#F1F3F0', borderRadius: 99 }, comingRight: { right: 8 }, comingLeft: { left: 8 },
   bookingCard: { padding: 13 }, bookingTop: { flexDirection: 'row', alignItems: 'center', gap: 10 }, bookingBottom: { borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 10, marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   howCard: { borderRadius: radius.md, backgroundColor: '#EFF3EA', padding: 15, gap: 12 }, howSteps: { flexDirection: 'row', justifyContent: 'space-between' }, howStep: { flex: 1, alignItems: 'center', gap: 6 }, stepNumber: { width: 25, height: 25, borderRadius: 12.5, backgroundColor: colors.lime, alignItems: 'center', justifyContent: 'center' },
   rtlRow: { flexDirection: 'row-reverse' },

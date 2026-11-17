@@ -2,7 +2,7 @@ export type Language = 'ur' | 'en';
 export type UserRole = 'customer' | 'provider' | 'admin';
 export type SessionMode = 'demo' | 'authenticated';
 export type BookingStatus = 'pending' | 'accepted' | 'on_the_way' | 'in_progress' | 'completed' | 'cancelled';
-export type PaymentMethod = 'cash' | 'wallet_demo' | 'bank_demo';
+export type PaymentMethod = 'cash';
 export type AppRoute = 'home' | 'booking' | 'bookings' | 'tracking' | 'profile' | 'provider' | 'admin';
 
 export interface ServiceCategory {
@@ -51,6 +51,7 @@ export interface Booking {
   providerId?: string | null;
   providerName: string;
   preferredProviderName?: string;
+  demoAssignmentConfirmed?: boolean;
   customerName: string;
   description: string;
   address: string;
@@ -72,7 +73,8 @@ export interface BookingDraft {
   photoUri?: string;
   address: string;
   scheduledAt: string;
-  provider: Provider;
+  provider?: Provider;
+  preferredProviderName?: string;
   paymentMethod: PaymentMethod;
   promoCode?: string;
   price: number;

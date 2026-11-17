@@ -28,6 +28,7 @@ export const providers: Provider[] = [
 export const demoBookings: Booking[] = [
   { id: 'GK-2048', serviceId: 'plumber', serviceNameUr: 'پلمبر', serviceNameEn: 'Plumber', subtypeUr: 'نل یا پائپ لیک', subtypeEn: 'Leaking tap or pipe', providerId: 'pro-02', providerName: 'علی رضا', customerName: 'احمد خان', description: 'کچن کا نل ٹپک رہا ہے', address: 'ماڈل ٹاؤن، لاہور', scheduledAt: new Date(Date.now() + 45 * 60000).toISOString(), status: 'accepted', paymentMethod: 'cash', price: 1200, createdAt: new Date().toISOString() },
   { id: 'GK-1936', serviceId: 'electrician', serviceNameUr: 'الیکٹریشن', serviceNameEn: 'Electrician', subtypeUr: 'لائٹ یا پنکھا', subtypeEn: 'Light or fan', providerId: 'pro-01', providerName: 'محمد عثمان', customerName: 'احمد خان', description: 'بیڈ روم کا پنکھا چل نہیں رہا', address: 'گلبرگ، لاہور', scheduledAt: new Date(Date.now() - 86400000).toISOString(), status: 'completed', paymentMethod: 'cash', price: 1000, rating: 5, createdAt: new Date(Date.now() - 2 * 86400000).toISOString() },
+  { id: 'GK-2083', serviceId: 'electrician', serviceNameUr: 'الیکٹریشن', serviceNameEn: 'Electrician', subtypeUr: 'لائٹ یا پنکھا', subtypeEn: 'Light or fan', providerId: null, providerName: '', customerName: 'احمد خان', description: 'بیڈ روم کا پنکھا آواز کر رہا ہے۔', address: 'گلبرگ III، لاہور', scheduledAt: new Date(Date.now() + 3 * 3600000).toISOString(), status: 'pending', paymentMethod: 'cash', price: 1000, createdAt: new Date().toISOString() },
 ];
 
 export const providerApplications: Provider[] = [

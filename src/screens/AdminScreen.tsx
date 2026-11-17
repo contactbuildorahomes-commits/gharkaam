@@ -7,6 +7,7 @@ import { assignBookingProvider, loadAdminCustomers, loadAdminProviderPage, loadA
 import { colors, radius, spacing } from '../theme/tokens';
 import { AppText, Button, Card, IconCircle, Pill, formatPKR } from '../components/ui';
 import { text } from '../i18n/translations';
+import { applyDemoCategoryOverrides } from '../lib/demoState';
 import { PromotionForm, ProviderAssignmentModal, ServiceCategoryForm, ServiceSubtypeForm } from './AdminManagementModals';
 
 type AdminTab = 'overview' | 'customers' | 'applications' | 'providers' | 'bookings' | 'services';
@@ -52,11 +53,7 @@ function buildDemoSnapshot(overrides: DemoAdminOverrides): AdminSnapshot {
     approvedProviders: demoProviders.filter((provider) => provider.status === 'approved').length,
     suspendedProviders: demoProviders.filter((provider) => provider.status === 'suspended').length,
     providers: demoProviders,
-    serviceCategories: (overrides.serviceCategories ?? DEMO_SNAPSHOT.serviceCategories).map((category) => ({
-      ...category,
-      available: overrides.serviceCategoryActive[category.id] ?? category.available,
-      subtypes: category.subtypes.map((subtype) => ({ ...subtype, available: subtype.available ?? true })),
-    })),
+    serviceCategories: applyDemoCategoryOverrides(DEMO_SNAPSHOT.serviceCategories, overrides),
     promotions: (overrides.promotions ?? DEMO_SNAPSHOT.promotions).map((promotion) => ({ ...promotion, active: overrides.promotionActive[promotion.code] ?? promotion.active })),
   };
 }
@@ -435,7 +432,7 @@ function OverviewPanel({ language, snapshot, bookings, mode, userName, onNavigat
         <View style={{ flex: 1 }}><AppText language={language} size={12} weight="bold" color={colors.jade}>{ur ? 'خوش آمدید' : 'YOUR MARKETPLACE AT A GLANCE'}</AppText><AppText language={language} size={17} weight="bold" style={{ marginTop: 3 }}>{ur ? 'خوش آمدید' : `Welcome${userName ? `, ${userName.split(' ')[0]}` : ' back'}`}</AppText></View>
         <IconCircle name="analytics-outline" background={colors.mint} color={colors.jade} size={42} />
       </View>
-      <View style={[styles.healthStrip, ur && styles.rtlRow]}><View style={styles.healthIcon}><Ionicons name="shield-checkmark" size={15} color={colors.jade} /></View><AppText language={language} size={11} weight="medium" style={{ flex: 1 }}>{ur ? 'ایڈمن کنٹرولز محفوظ ہیں' : 'Admin controls are protected by Supabase role checks'}</AppText></View>
+      <View style={[styles.healthStrip, ur && styles.rtlRow]}><View style={styles.healthIcon}><Ionicons name="shield-checkmark" size={15} color={colors.jade} /></View><AppText language={language} size={11} weight="medium" style={{ flex: 1 }}>{mode === 'demo' ? (ur ? 'نمونہ تبدیلیاں صرف اسی ڈیوائس کے ڈیمو میں محفوظ ہیں' : 'Demo controls change only this device’s sample state') : (ur ? 'ایڈمن کنٹرولز سرور کے کردار کی جانچ سے محفوظ ہیں' : 'Admin controls are protected by Supabase role checks')}</AppText></View>
     </Card>
 
     <View style={[styles.attentionGrid, ur && styles.rtlRow]}>

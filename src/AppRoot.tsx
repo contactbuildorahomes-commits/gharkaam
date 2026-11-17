@@ -7,8 +7,9 @@ import { NotoNastaliqUrdu_400Regular } from '@expo-google-fonts/noto-nastaliq-ur
 import type { AppRoute, AppUser, Booking, BookingDraft, BookingStatus, Language, ServiceCategory, SessionMode, UserRole } from './types';
 import { colors } from './theme/tokens';
 import { restoreSignedInUser, signOut } from './lib/auth';
-import { assignBookingProvider, createBooking, listBookings, loadMarketplaceSettings, saveRating, setBookingStatus, type AdminProviderRecord } from './data/repository';
-import { categories } from './data/mock';
+import { assignBookingProvider, createBooking, listBookings, loadDemoAdminOverrides, loadMarketplaceSettings, saveRating, setBookingStatus, type AdminProviderRecord } from './data/repository';
+import { categories, providers as demoProviders } from './data/mock';
+import { applyDemoCategoryOverrides, isDemoPromoAvailable } from './lib/demoState';
 import { text } from './i18n/translations';
 import { AppFrame } from './components/AppFrame';
 import { AppText } from './components/ui';
@@ -63,9 +64,19 @@ export default function AppRoot() {
   }, [role, mode, user?.id, screen]);
 
   useEffect(() => {
-    if (mode === 'demo') { setServiceCategories(categories); setPromoAvailable(true); return; }
-    if (role !== 'customer' || screen === 'entry' || screen === 'auth') return;
+    if (screen === 'entry' || screen === 'auth') return;
     let mounted = true;
+    if (mode === 'demo') {
+      loadDemoAdminOverrides().then((overrides) => {
+        if (!mounted) return;
+        setServiceCategories(applyDemoCategoryOverrides(categories, overrides));
+        setPromoAvailable(isDemoPromoAvailable(overrides));
+      }).catch((error: any) => {
+        if (mounted) setNotice(error?.message ?? 'Could not load demo settings.');
+      });
+      return () => { mounted = false; };
+    }
+    if (role !== 'customer') return;
     loadMarketplaceSettings().then((settings) => {
       if (mounted) { setServiceCategories(settings.serviceCategories); setPromoAvailable(settings.promoAvailable); }
     }).catch((error: any) => {
@@ -97,7 +108,8 @@ export default function AppRoot() {
     } catch (error: any) { setNotice(error?.message ?? 'Could not save booking.'); }
   };
   const updateStatus = async (booking: Booking, status: BookingStatus) => {
-    const updated = await setBookingStatus(booking, status, user, mode);
+    const demoProvider = mode === 'demo' && role === 'provider' ? demoProviders[0] : undefined;
+    const updated = await setBookingStatus(booking, status, user, mode, demoProvider, language);
     setBookings((rows) => rows.some((row) => row.id === updated.id) ? rows.map((row) => row.id === updated.id ? updated : row) : [updated, ...rows]);
     if (selectedBooking?.id === updated.id) setSelectedBooking(updated);
   };
@@ -125,9 +137,9 @@ export default function AppRoot() {
   const activeRoute = screen as AppRoute;
   let content: React.ReactNode = null;
   if (activeRoute === 'home' && role === 'customer') content = <CustomerHomeScreen language={language} name={user?.displayName ?? ''} bookings={bookings} serviceCategories={serviceCategories} promoAvailable={promoAvailable} onBook={startBooking} onTrack={(booking) => { setSelectedBooking(booking); setScreen('tracking'); }} onBookings={() => setScreen('bookings')} />;
-  else if (activeRoute === 'booking' && role === 'customer') content = <BookingFlowScreen language={language} initialCategory={initialCategory} serviceCategories={serviceCategories} promoAvailable={promoAvailable} onBack={() => setScreen('home')} onConfirm={confirmBooking} />;
+  else if (activeRoute === 'booking' && role === 'customer') content = <BookingFlowScreen language={language} mode={mode} initialCategory={initialCategory} serviceCategories={serviceCategories} promoAvailable={promoAvailable} onBack={() => setScreen('home')} onConfirm={confirmBooking} />;
   else if (activeRoute === 'bookings' && role === 'customer') content = <BookingsScreen language={language} bookings={bookings} onTrack={(booking) => { setSelectedBooking(booking); setScreen('tracking'); }} onRate={rateBooking} />;
-  else if (activeRoute === 'tracking' && role === 'customer') content = selectedBooking ? <TrackingScreen language={language} booking={selectedBooking} onBack={() => setScreen('bookings')} /> : <AppText language={language}>{text(language, 'noBookings')}</AppText>;
+  else if (activeRoute === 'tracking' && role === 'customer') content = selectedBooking ? <TrackingScreen language={language} booking={selectedBooking} isDemo={mode === 'demo'} onBack={() => setScreen('bookings')} /> : <AppText language={language}>{text(language, 'noBookings')}</AppText>;
   else if (activeRoute === 'provider' && role === 'provider') content = <ProviderScreen language={language} user={user} mode={mode} bookings={bookings} onStatusChange={updateStatus} />;
   else if (activeRoute === 'admin' && role === 'admin') content = <AdminScreen language={language} user={user} mode={mode} bookings={bookings} onBookingStatus={updateStatus} onBookingAssignment={updateAssignment} />;
   else if (activeRoute === 'profile') content = <ProfileScreen language={language} user={user} role={role} isDemo={mode === 'demo'} onLeave={leaveSession} onChangeRole={() => setScreen('entry')} />;

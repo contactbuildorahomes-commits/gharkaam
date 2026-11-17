@@ -1,6 +1,6 @@
 # GharKaam V1
 
-An Urdu-first, Lahore-focused home-services marketplace built with Expo, React Native, TypeScript, and Supabase. Customer, provider, and admin journeys stay separate; Urdu is the default with an English switch and RTL layout.
+An Urdu-first, Lahore-focused home-services marketplace built with Expo, React Native, TypeScript, and Supabase. Urdu is the default, with an English switch and right-to-left layouts.
 
 ## Run locally
 
@@ -11,47 +11,76 @@ cp .env.example .env.local
 npx expo start
 ```
 
-The local environment file is ignored by Git. The mobile app uses only the client-safe Supabase publishable key. Never put a service-role key in the app or repository.
+The local environment file is ignored by Git. The app uses only the client-safe Supabase publishable key. Never place a service-role key in the app or repository.
 
-## V1 workflows
+## What is in V1
 
-- **Customer:** browse live service categories and subtypes, describe a job, optionally attach a photo, choose an address/time, request a booking, track status, and rate completed work.
-- **Provider:** apply for approval, view eligible open requests, accept work, and progress assigned jobs through guarded statuses.
-- **Admin:** search and page through the complete provider lifecycle directory (review applications and suspend/reactivate providers); search and page through a minimal customer directory; search booking queues, make guarded status changes, and assign pending bookings to approved, service-eligible providers; create/edit bilingual service categories, subtypes, and offers; and pause/reactivate catalog items or offers.
+- **Customer:** browse active service categories, describe the job, optionally attach a photo, choose a Lahore address and time, send a booking request, track its status, and rate completed work.
+- **Provider:** apply for approval, view eligible open requests after approval, accept a job, and advance its guarded status.
+- **Admin:** review providers, manage a minimal customer directory, review bookings, assign a pending booking to an approved eligible provider, and manage bilingual service categories, subtypes, and offers. Authenticated admin operations are guarded by Supabase role checks.
+- **Payment:** cash after the service only. The app has no online payment processor and does not collect money. Prices shown before a visit are estimates.
+- **Provider assignment:** a customer booking starts as a request with no provider assignment. The authenticated booking flow does not show sample providers. The local demo may show illustrative provider preferences, but a preference is not an assignment. An assignment is created only through the admin assignment action or when the demo provider accepts a shared demo request.
+- **Demo:** customer, provider, and admin roles share the same local demo bookings and catalog overrides on that device/browser. Demo changes are saved in local AsyncStorage and do not write to Supabase. Switching roles from the profile keeps the local demo state. Old demo bookings that were auto-assigned from sample choices are normalized back to pending requests.
+- **Admin demo controls:** pausing a category, subtype, or offer changes only this device’s demo state; returning to the customer demo shows the same change. Demo values and profiles are illustrative, not real revenue, providers, or customers.
 
-Catalog and offer records are deactivated rather than deleted, preserving booking history and foreign-key references. Promotion expiry and optional global usage caps are checked by the server; a use is consumed when a booking is created, including if it is later cancelled, and caps are serialized with a promo-row lock. A cap cannot be reduced below the number of bookings already created with that offer. Provider assignment validates approval and service-category eligibility on the server, then marks the booking accepted; service-area fit remains an admin judgment, not an automated location guarantee.
+## Explicitly not in V1
 
-Demo changes are stored locally on the device and do not write to Supabase. Demo customers, providers, bookings, payment methods, and provider locations are illustrative. Real payment processing and live provider GPS are not implemented.
+- Online card, wallet, or bank payment processing.
+- Live provider GPS tracking.
+- inDrive-like customer/provider price bargaining.
+- GharKaam coins or buying app currency through the admin.
+- Direct messaging the admin.
 
-## Admin security and account setup
+Bargaining, coins/app currency, and direct admin messaging are future V2 ideas only; they are not available in this build.
 
-There is no public admin self-signup and no client-side role promotion. Create the owner account using the normal customer signup path and the owner's own email, complete email confirmation if enabled, then grant the `admin` role through a trusted Supabase database administrator/operator channel. Never expose a service-role credential to the app. The first admin should be provisioned only after the account exists; all admin reads and mutations still enforce the profile role server-side.
+## Security and data boundaries
 
-The `database/migrations/` SQL files are versioned, additive migrations. Apply them in order to a fresh project through a trusted Supabase migration channel; do not replay them against an already-migrated project. The approved project is `gharkaam` (`xbolobjxptfnbjicfvao`), region `ap-south-1`; foundation, RPC permission hardening, admin V1 controls, full provider paging, and legacy SECURITY DEFINER path hardening are applied there. The first owner role is assigned only after the submitted signup email is verified.
+The client uses the public Supabase publishable key and authenticated user sessions. Admin RPCs enforce the profile role on the server; no client-side role promotion is implemented. Authenticated operations fail explicitly when their user session or Supabase client is unavailable and cannot fall back to local demo writes. Demo data is stored under separate local AsyncStorage keys.
 
-## Project structure
+The database’s existing migration still accepts legacy `wallet_demo` and `bank_demo` payment labels, but the V1 app exposes and submits cash only. No processor or charge path exists. Before production, add and apply a server-side cash-only migration after checking existing booking rows; this release does not rewrite legacy booking records.
 
-- `src/screens/` — customer, provider, admin, role selection, and authentication screens
-- `src/screens/AdminManagementModals.tsx` — bilingual admin category, subtype, offer, and provider-assignment forms
-- `src/data/` — local demo fixtures and Supabase repository boundary
-- `src/lib/` — Supabase client, auth, and admin form validation
-- `src/i18n/` — Urdu and English copy
-- `database/migrations/` — versioned PostgreSQL schema, RLS, and server-guarded RPCs
-- `tests/` — admin form validation and migration guard regression tests
+The versioned SQL files in `database/migrations/` are additive migrations. Apply them in order to a fresh project through a trusted Supabase migration channel; do not replay them against an already-migrated project. The current configured project is `gharkaam` (`xbolobjxptfnbjicfvao`), region `ap-south-1`; the foundation, RPC permission hardening, admin V1 controls, provider paging, and legacy SECURITY DEFINER path hardening migrations are applied there. This work did not verify, resend, promote, or otherwise change any admin account or auth setting.
 
-## Validation
+## Client walkthrough
+
+1. Open **Admin → Demo preview** and switch to English if helpful. Show the local-only demo banner and the active booking queue.
+2. Open **Services & offers** and pause Electrician.
+3. Use **Profile → Switch demo role → Customer → Try demo**. Confirm Electrician is visibly paused and disabled, and cannot be booked; this demonstrates the shared local override.
+4. Return to Admin and reactivate Electrician. Switch to Customer and start an electrician booking. Select a service, issue, time, and address.
+5. On **Demo profiles · preference only**, select an illustrative provider preference. On the summary, show the COD-only note and send the booking request. The request should be pending and unassigned.
+6. Switch to **Provider → Demo**. The same request appears without the customer’s name or full address. Accept it; that action creates the demo assignment and updates the shared record.
+7. Return to Customer to see the accepted status, then to Admin to see the same booking and assignment. Point out that there is no live GPS, payment collection, bargaining, coins, or admin messaging.
+
+## Validation commands
 
 ```bash
 npm test
 npx tsc --noEmit
 npx expo install --check
+npx expo-doctor
 npx expo export --platform web
 npx expo export --platform ios
 npx expo export --platform android
 ```
 
-These exports verify platform bundles, not physical-device execution or a public deployment. Authenticated multi-account flows, native photo picking/upload, app-store signing, production monitoring, and a full privacy/security review still need release testing.
+Web/iOS/Android exports verify bundles, not physical-device execution or store deployment.
 
-## Known limits
+The browser smoke also checks Urdu and English role selection at 1280×649 and 500×609, local admin category pause/reactivation, COD booking, provider privacy, and shared provider acceptance. ESLint is not configured; `npx expo lint` offers to install/configure it, and this pass leaves project lint dependencies and policy unchanged.
 
-The launch city is Lahore. Appointment times currently use the device's local timezone. Provider and booking operational lists load up to the latest 1,000 rows; the customer directory uses server-side search with 100-row pages. Customer address management, provider capacity planning, multi-city routing, per-customer or first-use promo restrictions, aggregate rating recalculation, review moderation, photo-retention automation, and anti-abuse controls are not part of this V1. Demo payment choices are labels only; no money is charged.
+## Remaining production blockers
+
+- Admin sign-in/account readiness remains as currently configured; this work deliberately did not touch email verification, role assignment, or auth settings.
+- The deployed database still accepts legacy non-cash demo payment labels. Verify existing records and apply a cash-only server migration before production.
+- Real provider coverage, capacity/area matching, customer contact-sharing policy, and operational service-level procedures need production validation.
+- Test authenticated customer/provider/admin flows with separate accounts, including photo upload failures, server-side assignment and status transitions, and role/RLS enforcement.
+- Complete a privacy, security, and abuse review; define photo-retention and review-moderation operations; add production monitoring and backups.
+- No physical-device testing, app-store signing credentials/builds, store submission, or public deployment were performed. Device and store readiness are not claimed.
+
+## Project structure
+
+- `src/screens/` — customer, provider, admin, role selection, and authentication screens
+- `src/data/` — local demo fixtures, local persistence, and the Supabase repository boundary
+- `src/lib/demoState.ts` — pure shared demo projection and request/assignment rules
+- `src/i18n/` — Urdu and English copy
+- `database/migrations/` — PostgreSQL schema, RLS, and guarded RPCs
+- `tests/` — admin validation, migration guards, and demo flow regressions
